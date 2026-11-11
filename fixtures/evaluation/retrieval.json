@@ -1,0 +1,82 @@
+[
+  {
+    "question": "付款后多久能发出货？",
+    "section": "发货时效"
+  },
+  {
+    "question": "快递两天没更新怎么办？",
+    "section": "物流查询"
+  },
+  {
+    "question": "还没发货能申请退钱吗？",
+    "section": "未发货退款"
+  },
+  {
+    "question": "退的钱什么时候到银行卡？",
+    "section": "退款到账"
+  },
+  {
+    "question": "签收第五天不喜欢商品还能退吗？",
+    "section": "七天无理由退货"
+  },
+  {
+    "question": "买到坏的商品需要提供什么？",
+    "section": "质量问题售后"
+  },
+  {
+    "question": "退货快递费谁来付？",
+    "section": "退货运费"
+  },
+  {
+    "question": "尺寸不合适怎么换？",
+    "section": "换货规则"
+  },
+  {
+    "question": "公司报销怎么申请开票？",
+    "section": "电子发票"
+  },
+  {
+    "question": "发票抬头写错能改吗？",
+    "section": "发票更正"
+  },
+  {
+    "question": "付款失败但银行卡扣钱了怎么办？",
+    "section": "支付失败"
+  },
+  {
+    "question": "一笔订单扣了两次钱怎么办？",
+    "section": "重复扣款"
+  },
+  {
+    "question": "包裹发出后还能换地址吗？",
+    "section": "修改收货地址"
+  },
+  {
+    "question": "为什么优惠券用不了？",
+    "section": "优惠券规则"
+  },
+  {
+    "question": "买完降价能补差额吗？",
+    "section": "保价申请"
+  },
+  {
+    "question": "想知道商品材质应该看哪里？",
+    "section": "商品规格咨询"
+  },
+  {
+    "question": "显示签收可是我没收到怎么办？",
+    "section": "签收异常"
+  },
+  {
+    "question": "严重投诉由谁处理？",
+    "section": "投诉处理"
+  },
+  {
+    "question": "电器起火了怎么处理？",
+    "section": "安全事件"
+  },
+  {
+    "question": "发货了还能取消订单吗？",
+    "section": "订单取消"
+  }
+]

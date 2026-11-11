@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ticketflow"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1", "uvicorn>=0.34,<1", "pydantic-settings>=2.7,<3",
+  "sqlalchemy>=2.0,<3", "pymysql[rsa]>=1.1,<2", "alembic>=1.14,<2",
+  "openai>=1.60,<3", "python-multipart>=0.0.20", "PyJWT>=2.10,<3",
+  "pwdlib[argon2]>=0.2,<1", "pypdf>=5,<7", "jieba>=0.42", "rank-bm25>=0.2",
+  "numpy>=1.26,<3", "httpx>=0.28,<1", "filelock>=3.16", "tiktoken>=0.9"
+]
+
+[project.optional-dependencies]
+rag = ["sentence-transformers>=3.4,<6", "pymilvus>=3.0.2,<4", "milvus-lite>=3.2.2,<4"]
+test = ["pytest>=8,<10", "reportlab>=4,<5"]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = ["integration: requires a real configured MySQL database", "rag: requires Qwen weights and Milvus Lite"]

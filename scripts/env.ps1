@@ -1,0 +1,9 @@
+$env:TEMP = 'D:\CodexData\temp'
+$env:TMP = $env:TEMP
+$env:NPM_CONFIG_CACHE = 'D:\CodexData\caches\npm'
+$env:PIP_CACHE_DIR = 'D:\CodexData\caches\pip'
+$env:UV_CACHE_DIR = 'D:\CodexData\caches\uv'
+$env:PLAYWRIGHT_BROWSERS_PATH = 'D:\CodexData\caches\playwright'
+$env:HF_HOME = 'D:\CodexData\caches\huggingface'
+$env:TIKTOKEN_CACHE_DIR = 'D:\CodexData\caches\tiktoken'
+$env:PYTHONUTF8 = '1'
