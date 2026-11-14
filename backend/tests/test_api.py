@@ -6,7 +6,11 @@ from app.auth import passwords
 
 
 @pytest.fixture
-def client(db):
+def client(db, monkeypatch):
+    from contextlib import nullcontext
+    from app import ingress
+    # Share the fixture's uncommitted test transaction with pre-parser auth.
+    monkeypatch.setattr(ingress, 'Session', lambda: nullcontext(db))
     app.dependency_overrides[session] = lambda: db
     with TestClient(app) as client:
         yield client
@@ -85,3 +89,118 @@ def test_complete_workflow_approval_and_send_with_provider_transport_stub(client
     assert sent.status_code == 200
     assert sent.json()['sent_text'] == '审核通过后，款项会原路退回。'
     assert sent.json()['status'] == 'replied'
+
+
+def test_agent_cannot_gain_order_access_by_creating_a_ticket(client, db):
+    from app.db import Order, Ticket
+    from sqlalchemy import select, func
+    order = Order(id=uid(), customer_id='C-PRIVATE', product='private', amount_cents=100, status='paid')
+    db.add(order); db.flush()
+    headers = login(client, db, 'agent')
+    endpoint = '/api/v1/orders/' + order.id
+    assert client.get(endpoint, headers=headers).status_code == 403
+    result = client.post('/api/v1/tickets', headers=headers, json={
+        'subject': '咨询', 'content': '订单咨询', 'customer_id': 'C-PRIVATE', 'order_id': order.id})
+    assert result.status_code == 403
+    assert db.scalar(select(func.count()).select_from(Ticket).where(Ticket.order_id == order.id)) == 0
+    # A freely supplied customer ID on an unlinked ticket must not grant order access either.
+    assert client.post('/api/v1/tickets', headers=headers, json={
+        'subject': '咨询', 'content': '订单咨询', 'customer_id': 'C-PRIVATE'}).status_code == 201
+    assert client.get(endpoint, headers=headers).status_code == 403
+
+
+def test_manager_assignment_allows_agent_to_create_a_followup_for_that_order(client, db):
+    from app.db import Order
+    order = Order(id=uid(), customer_id='C-ASSIGNED', product='product', amount_cents=100, status='paid')
+    db.add(order); db.flush()
+    manager = login(client, db)
+    agent = login(client, db, 'agent')
+    agent_id = client.get('/api/v1/auth/me', headers=agent).json()['id']
+    body = {'subject': '咨询', 'content': '订单咨询', 'customer_id': 'C-ASSIGNED', 'order_id': order.id}
+    original = client.post('/api/v1/tickets', headers=manager, json=body)
+    assert original.status_code == 201
+    result = client.post('/api/v1/tickets/assign/batch', headers=manager,
+                         json={'ticket_ids': [original.json()['id']], 'user_id': agent_id})
+    assert result.status_code == 200
+    assert client.get('/api/v1/orders/' + order.id, headers=agent).status_code == 200
+    followup = client.post('/api/v1/tickets', headers=agent, json=body)
+    assert followup.status_code == 201
+    assert client.get('/api/v1/tickets/' + followup.json()['id'], headers=agent).json()['order']['id'] == order.id
+
+
+def test_password_rotation_revokes_old_sessions(client, db):
+    username = uid()
+    user = User(username=username, role='agent', password_hash=passwords.hash('old-test-password'))
+    db.add(user); db.flush()
+    token = client.post('/api/v1/auth/login', json={'username': username, 'password': 'old-test-password'}).json()['access_token']
+    headers = {'Authorization': 'Bearer ' + token}
+    assert client.get('/api/v1/auth/me', headers=headers).status_code == 200
+    user.password_hash = passwords.hash('new-test-password')
+    db.flush()
+    assert client.get('/api/v1/auth/me', headers=headers).status_code == 401
+    assert client.post('/api/v1/auth/login', json={'username': username, 'password': 'old-test-password'}).status_code == 401
+    assert client.post('/api/v1/auth/login', json={'username': username, 'password': 'new-test-password'}).status_code == 200
+
+
+def raw_upload(headers=()):
+    import asyncio
+    reads, sent = [], []
+    scope = {'type': 'http', 'asgi': {'version': '3.0'}, 'http_version': '1.1',
+             'method': 'POST', 'scheme': 'http', 'path': '/api/v1/knowledge/documents',
+             'raw_path': b'/api/v1/knowledge/documents', 'root_path': '', 'query_string': b'',
+             'headers': [(b'content-type', b'multipart/form-data; boundary=a')] + list(headers),
+             'client': ('127.0.0.1', 1234), 'server': ('test', 80)}
+    async def receive():
+        if reads:
+            await asyncio.Event().wait()
+        reads.append(True)
+        return {'type': 'http.request', 'body': b'--a--\r\n', 'more_body': False}
+    async def send(message):
+        sent.append(message)
+    asyncio.run(app(scope, receive, send))
+    return next(message['status'] for message in sent if message['type'] == 'http.response.start'), reads
+
+
+def test_unauthenticated_upload_is_rejected_without_receiving_body():
+    assert raw_upload() == (401, [])
+
+
+def test_agent_upload_is_rejected_without_receiving_body(client, db):
+    headers = login(client, db, 'agent')
+    assert raw_upload([(b'authorization', headers['Authorization'].encode())]) == (403, [])
+
+
+def test_invalid_upload_token_is_rejected_without_receiving_body():
+    assert raw_upload([(b'authorization', b'Bearer not-a-token')]) == (401, [])
+
+
+def test_revoked_upload_token_is_rejected_without_receiving_body(client, db):
+    headers = login(client, db)
+    user_id = client.get('/api/v1/auth/me', headers=headers).json()['id']
+    db.get(User, user_id).password_hash = passwords.hash('rotated-test-password')
+    db.flush()
+    assert raw_upload([(b'authorization', headers['Authorization'].encode())]) == (401, [])
+
+
+def test_authorized_upload_still_stores_and_enqueues_document(client, db, tmp_path, monkeypatch):
+    from app.config import settings
+    from app.db import Version, Job
+    from sqlalchemy import select
+    monkeypatch.setattr(settings(), 'data_dir', tmp_path)
+    headers = login(client, db, 'knowledge')
+    response = client.post('/api/v1/knowledge/documents', headers=headers,
+                           files={'file': ('policy.md', b'# policy\nRefund policy.', 'text/markdown')})
+    assert response.status_code == 202
+    version = db.get(Version, response.json()['id'])
+    from pathlib import Path
+    assert Path(version.path).is_relative_to(tmp_path)
+    assert Path(version.path).read_bytes() == b'# policy\nRefund policy.'
+    job = db.scalar(select(Job).where(Job.resource_id == version.id))
+    assert job.kind == 'ingest' and job.state == 'queued'
+
+
+def test_original_file_limit_is_retained_inside_total_multipart_limit(client, db):
+    headers = login(client, db)
+    response = client.post('/api/v1/knowledge/documents', headers=headers,
+                           files={'file': ('too-big.txt', b'x' * (10 * 1024 * 1024 + 1))})
+    assert response.status_code == 413

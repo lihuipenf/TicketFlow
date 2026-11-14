@@ -1,4 +1,6 @@
 from datetime import timedelta
+from hashlib import sha256
+import hmac
 import jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -12,6 +14,12 @@ passwords = PasswordHash.recommended()
 bearer = HTTPBearer(auto_error=False)
 
 
+def credential_stamp(user):
+    # Opaque, keyed fingerprint; no password/hash is exposed in the JWT.
+    return hmac.new(settings().jwt_secret.get_secret_value().encode(),
+                    (user.id + ':' + user.password_hash).encode(), sha256).hexdigest()
+
+
 def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bearer), db: DBSession = Depends(session)):
     if not credentials:
         raise HTTPException(401, '请先登录')
@@ -20,6 +28,9 @@ def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bear
         user = db.get(User, payload['sub'])
         if not user:
             raise ValueError('Unknown user')
+        stamp = payload.get('cred')
+        if not isinstance(stamp, str) or not hmac.compare_digest(stamp, credential_stamp(user)):
+            raise ValueError('Credentials changed')
         return user
     except (jwt.PyJWTError, KeyError, ValueError):
         raise HTTPException(401, '登录已过期，请重新登录')
@@ -40,5 +51,5 @@ def login(db, username, password):
     secret = settings().jwt_secret.get_secret_value()
     if len(secret) < 32:
         raise HTTPException(503, '请配置 JWT_SECRET')
-    token = jwt.encode({'sub': user.id, 'exp': now() + timedelta(hours=8)}, secret, algorithm='HS256')
+    token = jwt.encode({'sub': user.id, 'exp': now() + timedelta(hours=8), 'cred': credential_stamp(user)}, secret, algorithm='HS256')
     return {'access_token': token, 'token_type': 'bearer', 'user': {'id': user.id, 'username': user.username, 'role': user.role}}

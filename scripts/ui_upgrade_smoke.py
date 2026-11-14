@@ -16,7 +16,7 @@ with sync_playwright() as p:
  page.screenshot(path=str(OUT/'login.png'))
  def login(target,role='admin'):
   target.get_by_placeholder('请输入账号').fill(role)
-  target.get_by_placeholder('请输入密码').fill(env['ADMIN_PASSWORD'].strip('"\''))
+  target.get_by_placeholder('请输入密码').fill(env[role.upper() + '_PASSWORD'].strip('"\''))
   target.get_by_role('button',name='进入工作台').click()
  login(page)
  expect(page.get_by_role('heading',name='工单中心',exact=True)).to_be_visible()

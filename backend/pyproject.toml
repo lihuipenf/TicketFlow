@@ -11,7 +11,8 @@ dependencies = [
   "sqlalchemy>=2.0,<3", "pymysql[rsa]>=1.1,<2", "alembic>=1.14,<2",
   "openai>=1.60,<3", "python-multipart>=0.0.20", "PyJWT>=2.10,<3",
   "pwdlib[argon2]>=0.2,<1", "pypdf>=5,<7", "jieba>=0.42", "rank-bm25>=0.2",
-  "numpy>=1.26,<3", "httpx>=0.28,<1", "filelock>=3.16", "tiktoken>=0.9"
+  "numpy>=1.26,<3", "httpx>=0.28,<1", "filelock>=3.16", "tiktoken>=0.9",
+  "anyio>=4.4,<5", "python-dotenv>=1,<2"
 ]
 
 [project.optional-dependencies]
@@ -22,6 +23,6 @@ test = ["pytest>=8,<10", "reportlab>=4,<5"]
 include = ["app*"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["safety_tests", "tests"]
 pythonpath = ["."]
 markers = ["integration: requires a real configured MySQL database", "rag: requires Qwen weights and Milvus Lite"]

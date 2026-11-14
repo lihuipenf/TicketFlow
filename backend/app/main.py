@@ -3,10 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.config import settings
 from app.api import router
+from app.ingress import UploadIngress
 from uuid import uuid4
 
 app = FastAPI(title='TicketFlow')
 app.include_router(router)
+app.add_middleware(UploadIngress)
 app.add_middleware(CORSMiddleware, allow_origins=settings().cors_origins.split(','), allow_methods=['GET', 'POST', 'PUT'], allow_headers=['Authorization', 'Content-Type', 'Idempotency-Key'])
 
 

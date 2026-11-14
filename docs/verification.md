@@ -1,6 +1,45 @@
 # 验证记录
 
-## 2026-11-11 DeepSeek 真实模型联调通过（最新）
+## 2026-11-12 四项高危修复验证（最新）
+
+用户授权修复审查报告 H01-H04，未执行 Git 操作，未调用真实生成模型，未修改现有工单、订单或知识库内容。
+
+- **后端完整回归：72 passed，11.44秒。** 包含13项无连接测试隔离检查、13项上传入口回归，以及真实专用MySQL库上的API/业务/种子账号/并发与Milvus测试。测试进程清空真实LLM Key，外部模型成功路径仍使用明确的HTTP测试夹具。
+- **前端：6 passed；vue-tsc 和 Vite 构建成功；npm audit 0 已知漏洞。** 仍有既有的大于500kB构建块提示，未在安全修复中修改前端布局或打包策略。
+- **真实HTTP冒烟通过**：使用实际 `.env` 凭据，在临时本机端口启动当前API，验证四角色登录、客服密码不能登录管理员、旧格式JWT被拒绝；只发送上传请求头、不发送正文，即收到401（未登录）、403（客服无上传角色）、413（声明超限）和429（并发满）。临时API已退出，无业务写入、上传入库、任务入队或模型调用。
+- **现有账号已迁移**：四个固定账号全部改用独立随机密码，包括管理员；新值仅写入本地 `.env`。核验旧共享密码对四者均无效，API Key、模型配置、JWT密钥及业务数据库地址保持原值。独立测试DSN另行写入 `.env`。
+- **数据库权限实测**：用专用测试账号尝试只读访问业务 users 表，被MySQL拒绝；在建表前校验测试账号没有全局/跨库/角色权限。增加预先缓存业务引擎的进程级回归，确认在建立连接前被拒绝。
+- **独立复审**：发现并修复上传鉴权线程在超时后继续持有连接的容量缺口。线程现在自行持有独立的并发额度，HTTP请求超时或取消不能提前释放线程额度；连接读写使用有限socket超时。独立审核人验证了13项上传入口回归，无遗留的本批Critical/Important/Minor问题。
+
+关键回归先确认失败再修复：错误DSN仍尝试创建引擎、客服自建关联工单返回201、共享密码未分离/旧会话仍有效、未登录上传先读取body，以及鉴权超时/取消后产生多个活跃后台线程。均已补充自动化保护。
+
+复现：
+
+```powershell
+Set-Location 'D:\agent ai\TicketFlow'
+. .\scripts\env.ps1
+# 本机首次准备/修复专用测试账号；保留数据，不打印凭据
+.\.venv\Scripts\python scripts/prepare_test_db.py
+# 后端、前端、构建及npm审计
+.\scripts\verify.ps1
+# 临时API真实HTTP验证，完成后自动退出；不改业务数据
+.\.venv\Scripts\python -B scripts/security_smoke.py
+```
+
+新实现/主要修改文件：
+
+| 部分 | 文件 |
+| --- | --- |
+| 测试隔离 | `backend/app/database_safety.py`、`backend/tests/conftest.py`、`backend/safety_tests/test_database_isolation.py`、`scripts/prepare_test_db.py` |
+| 订单权限 | `backend/app/services.py`、`backend/app/api.py`、`backend/tests/test_api.py` |
+| 独立凭据与会话撤销 | `backend/app/accounts.py`、`backend/app/auth.py`、`backend/app/seed.py`、`backend/tests/test_seed.py`、`scripts/secure_accounts.py`、`scripts/bootstrap_db.py` |
+| 上传入口 | `backend/app/ingress.py`、`backend/app/main.py`、`backend/app/config.py`、`backend/app/db.py`、`backend/tests/test_upload_ingress.py` |
+| 配置/验证适配 | `.env.example`、`backend/pyproject.toml`、`scripts/security_smoke.py`、`scripts/browser_smoke.py`、`scripts/ui_upgrade_smoke.py` |
+| 说明与原报告状态 | `README.md`、`docs/operations.md`、`docs/verification.md`、`REVIEW_REPORT.md` |
+
+本次没有重做真实LLM质量评测、生产压力/故障恢复测试、外部Nginx部署或Git历史扫描，也没有运行浏览器UI端到端测试。原报告M/L事项保留为后续计划；本次结论仅覆盖授权的四项高危整改，不是整个系统的生产安全认证。
+
+## 2026-11-11 DeepSeek 真实模型联调通过（历史记录）
 
 用户明确 Key 来自 DeepSeek 后，将本地 `.env` 的 provider/base_url/model/api_mode 改为 deepseek / https://api.deepseek.com / deepseek-flash / chat，保留原Key。重启API和Worker，重试同一模拟工单，完整处理成功。
 

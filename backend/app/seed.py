@@ -4,10 +4,10 @@ from pathlib import Path
 import json
 from sqlalchemy import select
 from app.db import User, Order, Ticket, WorkflowConfig, Session, now
-from app.auth import passwords
 from app.config import ROOT, settings
 from app.policy import classify
 from app.services import DEFAULT_CONFIG, upload
+from app.accounts import ensure_seed_accounts, ROLES
 
 FAQS = [
     ('发货时效', '付款成功后，普通现货订单通常在48小时内发货。预售商品以商品详情页约定日期为准。超过约定时间未发货，可联系客服核实库存与履约进度。'),
@@ -34,13 +34,7 @@ FAQS = [
 
 
 def populate(db):
-    password = settings().admin_password.get_secret_value()
-    if len(password) < 12:
-        raise ValueError('请设置至少12位 ADMIN_PASSWORD')
-    for username, role in [('admin', 'admin'), ('supervisor', 'supervisor'), ('agent', 'agent'), ('knowledge', 'knowledge')]:
-        if not db.scalar(select(User).where(User.username == username)):
-            db.add(User(username=username, password_hash=passwords.hash(password), role=role))
-    db.flush()
+    ensure_seed_accounts(db, {role: getattr(settings(), role + '_password').get_secret_value() for role in ROLES})
     admin = db.scalar(select(User).where(User.username == 'admin'))
     agent = db.scalar(select(User).where(User.username == 'agent'))
     order_states = ['unpaid', 'paid', 'shipping', 'delivered', 'cancelled', 'refunding', 'refunded']

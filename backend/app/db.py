@@ -119,7 +119,8 @@ class WorkflowConfig(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 
-engine = create_engine(settings().database_url.get_secret_value(), pool_pre_ping=True, pool_recycle=1800)
+engine = create_engine(settings().database_url.get_secret_value(), pool_pre_ping=True, pool_recycle=1800,
+                       connect_args={'connect_timeout': 10, 'read_timeout': 10, 'write_timeout': 10})
 Session = sessionmaker(engine, expire_on_commit=False)
 
 

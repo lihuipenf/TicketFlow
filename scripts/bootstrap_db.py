@@ -26,5 +26,7 @@ template = (ROOT / '.env.example').read_text(encoding='utf-8')
 template = template.replace('ticketflow:CHANGE_ME@', f'ticketflow:{db_password}@')
 template = template.replace('GENERATE_A_RANDOM_SECRET_AT_LEAST_32_CHARACTERS', secrets.token_urlsafe(48))
 template = template.replace('CHANGE_ME_AT_LEAST_12_CHARACTERS', admin_password)
+for role in ('SUPERVISOR', 'AGENT', 'KNOWLEDGE'):
+    template = template.replace(role + '_PASSWORD=', role + '_PASSWORD=' + secrets.token_urlsafe(32))
 (ROOT / '.env').write_text(template + '\nLOCAL_MYSQL_ROOT_PASSWORD=' + root_password + '\n', encoding='utf-8')
 print('Isolated database provisioned. Credentials stored in ignored .env; no secrets printed.')

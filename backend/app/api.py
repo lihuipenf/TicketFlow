@@ -169,12 +169,7 @@ def orders(q: str = '', user=Depends(managers), db: Session = Depends(session)):
 
 @router.get('/orders/{order_id}')
 def order(order_id: str, user=Depends(staff), db: Session = Depends(session)):
-    if user.role == 'agent' and not db.scalar(select(Ticket.id).where(Ticket.order_id == order_id, Ticket.assignee == user.id).limit(1)):
-        raise HTTPException(403, '无关联工单访问权限')
-    result = db.get(Order, order_id)
-    if not result:
-        raise HTTPException(404, '订单不存在')
-    return serialize(result)
+    return serialize(services.access_order(db, user, order_id))
 
 
 @router.get('/knowledge/documents')

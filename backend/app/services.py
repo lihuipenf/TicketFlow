@@ -34,10 +34,22 @@ def access_ticket(db, user, ticket_id, lock=False):
     return ticket
 
 
+def access_order(db, user, order_id):
+    if user.role not in ('admin', 'supervisor'):
+        if user.role != 'agent' or not db.scalar(select(Ticket.id).where(
+                Ticket.order_id == order_id, Ticket.assignee == user.id).limit(1)):
+            raise HTTPException(403, '无关联工单访问权限，请由主管接入订单并分派')
+    order = db.get(Order, order_id)
+    if not order:
+        raise HTTPException(404, '订单不存在')
+    return order
+
+
 def create_ticket(db, user, data):
     if data.get('order_id'):
-        order = db.get(Order, data['order_id'])
-        if not order or order.customer_id != data['customer_id']:
+        # Authorize BEFORE this new ticket can itself become an access relationship.
+        order = access_order(db, user, data['order_id'])
+        if order.customer_id != data['customer_id']:
             raise HTTPException(403, '订单与客户不匹配')
     cleaned = redact(data['content'])
     label = classify(cleaned)

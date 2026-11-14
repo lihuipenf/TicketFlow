@@ -17,8 +17,8 @@ Set-Location 'D:\agent ai\TicketFlow'
 - OpenAPI 文档：<http://127.0.0.1:8000/docs>
 - 健康检查：<http://127.0.0.1:8000/api/v1/health>
 - 账号：`admin`、`supervisor`、`agent`、`knowledge`，分别对应管理员、主管、客服、知识管理员。
-- 本地模拟账号初始密码统一读取项目 `.env` 的 `ADMIN_PASSWORD`。脚本不会打印密码，勿将 `.env` 发到聊天或提交 Git。
-- `agent` 只可查看分配给自己的工单；管理员可批量分配。`knowledge` 进入知识管理页面。
+- 四个本地账号分别读取 `.env` 的 `ADMIN_PASSWORD`、`SUPERVISOR_PASSWORD`、`AGENT_PASSWORD`、`KNOWLEDGE_PASSWORD`，密码必须互不相同。2026-11-12 已轮换现有四个共享密码账号；请读取新的对应值，旧登录会话需重新登录。脚本不会打印密码，勿将 `.env` 发到聊天或提交 Git。
+- `agent` 只可查看分配给自己的工单；新建工单时只能关联已获分派权限的订单，其他订单须由主管接入并分派。`knowledge` 进入知识管理页面。
 - 独立 MySQL 使用 `127.0.0.1:3307`，数据位于项目 `data/mysql`；不会修改原有 `MySQL80` 服务。
 
 启动脚本发现 8000/5173 被占用会停止并提示，不会抢占别的服务。停止本脚本启动的 API、Worker 和前端：
@@ -90,6 +90,8 @@ Base URL 需匹配账户地域和服务商。DeepSeek/OpenAI 可更改 provider�
 Set-Location 'D:\agent ai\TicketFlow'
 .\scripts\doctor.ps1
 .\scripts\verify.ps1
+# 临时端口真实HTTP安全回归，自动退出；不修改业务数据
+.\.venv\Scripts\python -B scripts/security_smoke.py
 
 # API、Worker、前端运行时，执行真实 RAG 小样本评测
 .\.venv\Scripts\python scripts/evaluate_rag.py
@@ -104,10 +106,18 @@ Set-Location 'D:\agent ai\TicketFlow'
 
 新版界面验证使用现有待审核工单，覆盖五个页面、快捷搜索、状态筛选、移动布局、权限和编辑保护；不自动生成、审核或发送回复。旧 `scripts/browser_smoke.py` 保留初次交付时“未配置 Key”的历史场景，不适用于当前已配置真实 Key 的环境。完整成功生成→审核→发送的业务路径另有自动化集成测试；其中只有外部模型 HTTP 响应和检索边界使用明确的测试夹具，生产代码没有伪造模型后备。
 
-后端测试连接独立 `ticketflow_test` 库，自动隔离真实 LLM 凭据，避免测试意外调用付费接口。`TEST_DATABASE_URL` 可覆盖；测试会创建测试表与少量并发验证数据，不应指向业务库。首次准备本机测试库：
+后端测试必须显式配置 `TEST_DATABASE_URL`，使用独立的 `*_test` 库及专用账号；禁止推导地址、复用业务账号或 root。运行前检查实际引擎目标和 `SHOW GRANTS`，拒绝全局、跨库及角色继承权限，然后才创建测试表；同时隔离真实 LLM 凭据。本机引导会将专用测试配置写入忽略的 `.env`，保留已有数据：
 
 ```powershell
 .\.venv\Scripts\python scripts/prepare_test_db.py
+```
+
+无需数据库连接的隔离配置回归可单独运行：
+
+```powershell
+. .\scripts\env.ps1
+Set-Location backend
+..\.venv\Scripts\python -B -m pytest safety_tests -q -p no:cacheprovider
 ```
 
 详细结果见 [docs/verification.md](docs/verification.md)，评测原始结果和截图在忽略 Git 的 `data/verification/`。
@@ -126,7 +136,7 @@ npm ci
 Set-Location ..
 ```
 
-通用部署：复制 `.env.example` 为 `.env`，填写专用 `DATABASE_URL`、至少32字符随机 JWT_SECRET、至少12字符 ADMIN_PASSWORD。不要覆盖已有 `.env`。
+通用部署：复制 `.env.example` 为 `.env`，填写专用 `DATABASE_URL`、至少32字符随机 `JWT_SECRET`。四个本地账号需分别配置至少12位、最多200位的独立密码，也可在迁移后运行 `scripts/secure_accounts.py` 自动生成；不要覆盖已有 `.env`。外部数据库需手工准备专用测试库/账号，显式设置 `TEST_DATABASE_URL`；测试账号只能拥有该测试库权限，GRANT 库名中的 `_` 须转义为 `\_`，不能授予全局权限、业务库权限或角色。
 
 当前电脑的独立实例引导（**仅首次、没有 `.env` 且没有已有数据目录时**）：
 
@@ -145,12 +155,15 @@ New-Item -ItemType Directory -Force data/mysql,data/logs | Out-Null
 ```powershell
 Set-Location backend
 ..\.venv\Scripts\python -m alembic upgrade head
+Set-Location ..
+.\.venv\Scripts\python scripts/secure_accounts.py
+Set-Location backend
 ..\.venv\Scripts\python -m app.seed --knowledge
 Set-Location ..
 .\scripts\dev.ps1
 ```
 
-初始化幂等，不覆盖已存在的模拟订单/工单。运行 Worker 后等待知识构建完成，在知识库页面点击“发布版本”。模型首次下载可能较慢；CPU 能运行，硬件影响速度。
+初始化幂等，不覆盖已存在的模拟订单/工单；四个固定本地账号的密码以对应 `.env` 值为准，重复初始化会同步这些账号的密码。`scripts/secure_accounts.py --rotate` 可轮换全部四个密码并使旧会话失效，其他自建账号不受该脚本管理。运行 Worker 后等待知识构建完成，在知识库页面点击“发布版本”。模型首次下载可能较慢；CPU 能运行，硬件影响速度。
 
 ## 项目边界
 
@@ -160,8 +173,10 @@ Set-Location ..
 - 扫描 PDF、图片及复杂表格 OCR 不在第一版；无文字页明确报错，需要先 OCR。
 - 证据充分度是启发式评分，不是答案正确概率；引用逐字匹配不等于语义真实性，仍需人工复核。
 - 脱敏覆盖常见手机号、邮箱、身份证号、显式地址字段；真实客户上线前应补充业务专用敏感信息识别与脱敏评测。
-- 生产上线还需企业身份、密码管理、HTTPS/限流、备份恢复、业务 SLA、真实渠道适配与容量测试；本地共享初始演示密码不适用于生产。
+- 生产上线还需企业身份、人员级密码管理、HTTPS/业务限流、备份恢复、业务 SLA、真实渠道适配与容量测试；本地四个固定角色账号不替代企业人员账号。
 - 不自动退款、不自动赔付、不自动修改订单，不执行文档或模型中的指令。
+
+知识上传现在先鉴权，再接收有上限的请求体，最后解析 multipart。默认总请求体上限 10 MiB + 64 KiB（表单开销）、文件上限 10 MiB、接收期限30秒；每个 API 进程同时接收/处理2个上传，后台鉴权线程也有独立的2个上限。请求超限返回413、接收超时408、并发满429。可用 `.env.example` 中 `UPLOAD_*` 调整受约束的预算。网络部署还应在反向代理设置一致的大小、连接与超时限制，详见 [运行维护](docs/operations.md)。PDF 展开后工作量及其他中低危项仍按 [审查报告](REVIEW_REPORT.md) 单独规划。
 
 架构和数据说明：[docs/architecture.md](docs/architecture.md)。API说明：[docs/api.md](docs/api.md)。运行维护：[docs/operations.md](docs/operations.md)。
 
